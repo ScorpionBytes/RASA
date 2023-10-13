@@ -66,59 +66,6 @@ DEFAULT_LLM_CONFIG = {
 LLM_CONFIG_KEY = "llm"
 
 
-class LLMCallbackHandler(BaseCallbackHandler):
-    """Callback Handler that writes to a file."""
-
-    def __init__(self) -> None:
-        """Initialize callback handler."""
-        self.start = 0
-        self.file_name = "output.log"
-
-    def on_llm_start(
-        self,
-        serialized: Dict[str, Any],
-        prompts: List[str],
-        *,
-        run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        tags: Optional[List[str]] = None,
-        **kwargs: Any,
-    ) -> Any:
-        self.start = time.time()
-
-    async def on_llm_end(
-        self,
-        response: LLMResult,
-        *,
-        run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        **kwargs: Any,
-    ) -> Any:
-        end = time.time()
-
-        async def _write_data():
-            data = (
-                f"rasa.llm_callback_handler.response: {response.llm_output['JSON']}"
-                f"rasa.llm_callback_handler.inference_time: {end - self.start}"
-            )
-
-            try:
-                # Open the file in append mode ('a')
-                file = open(self.file_name, "a")
-            except FileNotFoundError:
-                # If file doesn't exist, create it
-                file = open(self.file_name, "w")
-
-            # Append the given string to the file
-            file.write(data)
-            file.write("\n")
-
-            # Close the file
-            file.close()
-
-        await _write_data()
-
-
 @DefaultV1Recipe.register(
     [
         DefaultV1Recipe.ComponentType.COMMAND_GENERATOR,
