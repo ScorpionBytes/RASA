@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from functools import cached_property
 from typing import (
@@ -1115,7 +1116,16 @@ class GenerateResponseFlowStep(FlowStep):
         prompt = Template(self.generation_prompt).render(context)
 
         try:
-            return llm(prompt)
+            start = time.time()
+            llm_result = llm.generate([prompt])
+            end = time.time()
+
+            logger.info(
+                f"rasa.flow.llm_api_call.llm_output: llm_output = {llm_result.llm_output}"
+            )
+            logger.info(f"rasa.flow.llm_api_call.duration: duration = {end - start}")
+
+            return llm_result.generations[0][0].text
         except Exception as e:
             # unfortunately, langchain does not wrap LLM exceptions which means
             # we have to catch all exceptions here
@@ -1186,7 +1196,16 @@ class EntryPromptFlowStep(FlowStep, StepThatCanStartAFlow):
         llm = llm_factory(self.llm_config, DEFAULT_LLM_CONFIG)
 
         try:
-            return llm(prompt)
+            start = time.time()
+            llm_result = llm.generate([prompt])
+            end = time.time()
+
+            structlogger.info(
+                "rasa.flow.llm_api_call.llm_output", llm_output=llm_result.llm_output
+            )
+            structlogger.info("rasa.flow.llm_api_call.duration", duration=end - start)
+
+            return llm_result.generations[0][0].text
         except Exception as e:
             # unfortunately, langchain does not wrap LLM exceptions which means
             # we have to catch all exceptions here
