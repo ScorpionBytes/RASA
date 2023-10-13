@@ -1120,10 +1120,10 @@ class GenerateResponseFlowStep(FlowStep):
             llm_result = llm.generate([prompt])
             end = time.time()
 
-            logger.info(
-                f"rasa.flow.llm_api_call.llm_output: llm_output = {llm_result.llm_output}"
+            structlogger.info(
+                f"rasa.llm_api_call.flow.llm_output", llm_output=llm_result.llm_output
             )
-            logger.info(f"rasa.flow.llm_api_call.duration: duration = {end - start}")
+            structlogger.info(f"rasa.llm_api_call.flow.latency", latency=end - start)
 
             return llm_result.generations[0][0].text
         except Exception as e:
@@ -1201,9 +1201,9 @@ class EntryPromptFlowStep(FlowStep, StepThatCanStartAFlow):
             end = time.time()
 
             structlogger.info(
-                "rasa.flow.llm_api_call.llm_output", llm_output=llm_result.llm_output
+                "rasa.llm_api_call.flow.llm_output", llm_output=llm_result.llm_output
             )
-            structlogger.info("rasa.flow.llm_api_call.duration", duration=end - start)
+            structlogger.info("rasa.llm_api_call.flow.latency", latency=end - start)
 
             return llm_result.generations[0][0].text
         except Exception as e:

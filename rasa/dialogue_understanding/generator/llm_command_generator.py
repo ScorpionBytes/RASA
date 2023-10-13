@@ -140,11 +140,12 @@ class LLMCommandGenerator(GraphComponent, CommandGenerator):
             end = time.time()
 
             structlogger.info(
-                "rasa.llm_command_generator.llm_api_call.llm_output",
+                "rasa.llm_api_call.llm_command_generator.llm_output",
                 llm_output=llm_result.llm_output,
             )
             structlogger.info(
-                "rasa.llm_command_generator.llm_api_call.duration", duration=end - start
+                "rasa.llm_api_call.llm_command_generator.latency",
+                latency=end - start,
             )
 
             return llm_result.generations[0][0].text
