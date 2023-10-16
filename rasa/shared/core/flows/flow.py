@@ -1196,16 +1196,7 @@ class EntryPromptFlowStep(FlowStep, StepThatCanStartAFlow):
         llm = llm_factory(self.llm_config, DEFAULT_LLM_CONFIG)
 
         try:
-            start = time.time()
-            llm_result = llm.generate([prompt])
-            end = time.time()
-
-            structlogger.info(
-                "rasa.llm_api_call.flow.llm_output", llm_output=llm_result.llm_output
-            )
-            structlogger.info("rasa.llm_api_call.flow.latency", latency=end - start)
-
-            return llm_result.generations[0][0].text
+            return llm(prompt)
         except Exception as e:
             # unfortunately, langchain does not wrap LLM exceptions which means
             # we have to catch all exceptions here
