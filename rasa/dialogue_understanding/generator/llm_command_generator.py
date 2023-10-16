@@ -43,6 +43,12 @@ from rasa.shared.utils.llm import (
     sanitize_message_for_prompt,
 )
 
+import os
+import json
+import tiktoken
+from langchain.callbacks import get_openai_callback
+from rasa.constants import BENCHMARKS_DIR_PATH
+
 DEFAULT_COMMAND_PROMPT_TEMPLATE = importlib.resources.read_text(
     "rasa.dialogue_understanding.generator", "command_prompt_template.jinja2"
 )
@@ -129,7 +135,34 @@ class LLMCommandGenerator(GraphComponent, CommandGenerator):
         llm = llm_factory(self.config.get(LLM_CONFIG_KEY), DEFAULT_LLM_CONFIG)
 
         try:
-            return llm(prompt)
+
+            with get_openai_callback() as cb:
+                result = llm(prompt)
+                if cb.total_tokens != 0:
+                    costs = {
+                        'total_tokens': cb.total_tokens,
+                        'total_cost': cb.total_cost,
+
+                        'prompt_tokens': cb.prompt_tokens,
+                        'prompt_cost': cb.prompt_tokens / cb.total_tokens * cb.total_cost,
+
+                        'completion_tokens': cb.total_tokens - cb.prompt_tokens,
+                        'completion_cost': (cb.total_tokens - cb.prompt_tokens) / cb.total_tokens * cb.total_cost,
+
+                        'successful_requests': cb.successful_requests
+                    }
+                else:
+                    costs = {
+                        'total_tokens': 0,
+                        'total_cost': 0,
+                        'prompt_tokens': 0,
+                        'completion_tokens': 0,
+                        'prompt_cost': 0,
+                        'completion_cost': 0,
+                        'successful_requests': 0
+                    }
+                structlogger.info("llm_command_generator.llm.prompt", **costs)
+                return result, costs
         except Exception as e:
             # unfortunately, langchain does not wrap LLM exceptions which means
             # we have to catch all exceptions here
@@ -145,11 +178,12 @@ class LLMCommandGenerator(GraphComponent, CommandGenerator):
         if tracker is None or flows.is_empty():
             # cannot do anything if there are no flows or no tracker
             return []
-        flow_prompt = self.render_template(message, tracker, flows)
+        # FINDING: This is where prompts are rendered. Try to extract the size of history, slots, actions, etc.
+        flow_prompt, template_details = self.render_template(message, tracker, flows)
         structlogger.info(
             "llm_command_generator.predict_commands.prompt_rendered", prompt=flow_prompt
         )
-        action_list = self._generate_action_list_using_llm(flow_prompt)
+        action_list, cost = self._generate_action_list_using_llm(flow_prompt)
         structlogger.info(
             "llm_command_generator.predict_commands.actions_generated",
             action_list=action_list,
@@ -159,6 +193,21 @@ class LLMCommandGenerator(GraphComponent, CommandGenerator):
             "llm_command_generator.predict_commands.finished",
             commands=commands,
         )
+
+        meta = {
+            'what': 'llm_command_generator.LLMCommandGenerator.predict_commands',
+            'message': message.data['text'],
+            'prompt': flow_prompt,
+            'completion': action_list,
+        }
+        meta.update(cost)
+        meta.update(template_details)
+
+        # FINDING: Maybe here just open the file and store everything?
+        file_name = f"{message.data['metadata']['test_case']['name']}.jsonl"
+
+        with open(os.path.join(BENCHMARKS_DIR_PATH, file_name), 'a') as outfile:
+            outfile.write(f"{json.dumps(meta)}\n")
 
         return commands
 
@@ -381,4 +430,60 @@ class LLMCommandGenerator(GraphComponent, CommandGenerator):
             "user_message": latest_user_message,
         }
 
-        return Template(self.prompt_template).render(**inputs)
+        # FINDING: Here additional info is returned
+        encoding = tiktoken.encoding_for_model(self.config["llm"]["model_name"])
+
+        flow_part_template = """
+            {% for flow in available_flows %}
+            {{ flow.name }}: {{ flow.description }}
+                {% for slot in flow.slots -%}
+                slot: {{ slot.name }}{% if slot.description %} ({{ slot.description }}){% endif %}
+                {% endfor %}
+            {%- endfor %}
+        """
+        active_slots_part_template = """
+            {% if current_flow != None %}
+            You are currently in the flow "{{ current_flow }}", which {{ current_flow.description }}
+            You have just asked the user for the slot "{{ collect }}"{% if collect_description %} ({{ collect_description }}){% endif %}.
+            
+            {% if flow_slots|length > 0 %}
+            Here are the slots of the currently active flow:
+            {% for slot in flow_slots -%}
+            - name: {{ slot.name }}, value: {{ slot.value }}, type: {{ slot.type }}, description: {{ slot.description}}{% if slot.allowed_values %}, allowed values: {{ slot.allowed_values }}{% endif %}
+            {% endfor %}
+            {% endif %}
+            {% else %}
+            You are currently not in any flow and so there are no active slots.
+            This means you can only set a slot if you first start a flow that requires that slot.
+            {% endif %}
+            If you start a flow, first start the flow and then optionally fill that flow's slots with information the user provided in their message.
+        """
+
+        flow_part = Template(flow_part_template).render(**inputs)
+        flow_part_tokens = len(encoding.encode(flow_part))
+
+        active_slots_part = Template(active_slots_part_template).render(**inputs)
+        active_slots_part_tokens = len(encoding.encode(active_slots_part))
+
+        current_conversation_part_tokens =  len(encoding.encode(current_conversation))
+        num_conversation_turns = len(list(filter(lambda t: len(t.strip()) > 1, current_conversation.split('\n'))))
+
+        user_message_tokens = len(encoding.encode(latest_user_message))
+
+        meta = {
+            "prompt_flow": flow_part,
+            "prompt_flow_tokens": flow_part_tokens,
+            "num_available_flows": len(inputs["available_flows"]),
+
+            "prompt_active_slots": active_slots_part,
+            "prompt_active_slots_tokens": active_slots_part_tokens,
+            "num_active_slots": len(inputs["flow_slots"]),
+
+            "prompt_current_conversation": current_conversation,
+            "prompt_current_conversation_tokens": current_conversation_part_tokens,
+            "num_conversation_turns": num_conversation_turns,
+
+            "user_message_tokens": user_message_tokens,
+            "user_message_words": len(latest_user_message.strip().split())
+        }
+        return Template(self.prompt_template).render(**inputs), meta

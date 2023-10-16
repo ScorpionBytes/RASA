@@ -143,7 +143,8 @@ def llm_factory(
     Returns:
     Instantiated LLM based on the configuration.
     """
-    ensure_cache()
+    # FINDING: This is where caching happens
+    # ensure_cache()
 
     config = combine_custom_and_default_config(custom_config, default_config)
 
