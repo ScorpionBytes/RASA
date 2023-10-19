@@ -141,25 +141,14 @@ class LLMCommandGenerator(GraphComponent, CommandGenerator):
                 if cb.total_tokens != 0:
                     costs = {
                         'total_tokens': cb.total_tokens,
-                        'total_cost': cb.total_cost,
-
                         'prompt_tokens': cb.prompt_tokens,
-                        'prompt_cost': cb.prompt_tokens / cb.total_tokens * cb.total_cost,
-
-                        'completion_tokens': cb.total_tokens - cb.prompt_tokens,
-                        'completion_cost': (cb.total_tokens - cb.prompt_tokens) / cb.total_tokens * cb.total_cost,
-
-                        'successful_requests': cb.successful_requests
+                        'completion_tokens': cb.completion_tokens,
                     }
                 else:
                     costs = {
                         'total_tokens': 0,
-                        'total_cost': 0,
                         'prompt_tokens': 0,
                         'completion_tokens': 0,
-                        'prompt_cost': 0,
-                        'completion_cost': 0,
-                        'successful_requests': 0
                     }
                 structlogger.info("llm_command_generator.llm.prompt", **costs)
                 return result, costs
@@ -204,7 +193,10 @@ class LLMCommandGenerator(GraphComponent, CommandGenerator):
         meta.update(template_details)
 
         # FINDING: Maybe here just open the file and store everything?
-        file_name = f"{message.data['metadata']['test_case']['name']}.jsonl"
+        # For test cases
+        # file_name = f"{message.data['metadata']['test_case']['name']}.jsonl"
+        # For long synthetic conversation
+        file_name = f"long_conversation.jsonl"
 
         with open(os.path.join(BENCHMARKS_DIR_PATH, file_name), 'a') as outfile:
             outfile.write(f"{json.dumps(meta)}\n")
