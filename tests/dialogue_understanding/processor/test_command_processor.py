@@ -1,11 +1,20 @@
 import pytest
 
-from rasa.dialogue_understanding.commands import SetSlotCommand, StartFlowCommand
+from rasa.dialogue_understanding.commands import (
+    CancelFlowCommand,
+    CorrectSlotsCommand,
+    FreeFormAnswerCommand,
+    SetSlotCommand,
+    StartFlowCommand,
+)
 from rasa.dialogue_understanding.processor.command_processor import (
-    contains_command,
     _get_commands_from_tracker,
+    contains_command,
+    find_updated_flows,
+    validate_state_of_commands,
 )
 from rasa.shared.core.events import SlotSet, UserUttered
+from rasa.shared.core.flows.flow import FlowsList
 from rasa.shared.core.trackers import DialogueStateTracker
 
 
@@ -30,18 +39,58 @@ def test_contains_command(commands, command_type, expected_result):
     assert result == expected_result
 
 
-def test_get_commands_from_tracker():
+def test_get_commands_from_tracker(tracker: DialogueStateTracker):
     """Test if commands are correctly extracted from tracker."""
-    # Given
-    tracker = DialogueStateTracker.from_events(
-        "test",
-        evts=[
-            UserUttered("hi", {"name": "greet"}),
-        ],
-    )
-    # use the conftest.py written by thomas in stack clean up pr.
     # When
     commands = _get_commands_from_tracker(tracker)
     # Then
-    assert len(commands) == 2
-    assert isinstance(commands[0], SetSlotCommand)
+    assert isinstance(commands[0], StartFlowCommand)
+    assert commands[0].command() == "start flow"
+    assert commands[0].flow == "foo"
+
+
+@pytest.mark.parametrize(
+    "commands",
+    [
+        [CancelFlowCommand()],
+        [StartFlowCommand("flow_name")],
+        [SetSlotCommand("slot_name", "slot_value")],
+        [StartFlowCommand("flow_name"), SetSlotCommand("slot_name", "slot_value")],
+        [FreeFormAnswerCommand(), SetSlotCommand("slot_name", "slot_value")],
+        [
+            FreeFormAnswerCommand(),
+            FreeFormAnswerCommand(),
+            StartFlowCommand("flow_name"),
+        ],
+        [CorrectSlotsCommand([])],
+        [CorrectSlotsCommand([]), StartFlowCommand("flow_name")],
+    ],
+)
+def test_validate_state_of_commands(commands):
+    """Test if commands are correctly validated."""
+    # Then
+    validate_state_of_commands(commands)
+    # No exception should be raised
+
+
+@pytest.mark.parametrize(
+    "commands",
+    [
+        [CancelFlowCommand(), CancelFlowCommand()],
+        [StartFlowCommand("flow_name"), FreeFormAnswerCommand()],
+        [CorrectSlotsCommand([]), CorrectSlotsCommand([])],
+    ],
+)
+def test_validate_state_of_commands_raises_exception(commands):
+    """Test if commands are correctly validated."""
+    # Then
+    with pytest.raises(AssertionError):
+        validate_state_of_commands(commands)
+
+
+def test_find_updated_flows(tracker: DialogueStateTracker, all_flows: FlowsList):
+    """Test if updated flows are correctly found."""
+    # When
+    updated_flows = find_updated_flows(tracker, all_flows)
+    # Then
+    assert updated_flows == {"foo"}
