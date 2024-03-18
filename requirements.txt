@@ -33,7 +33,7 @@ colorhash==1.0.2
 pika==1.0.1
 jsonschema==3.0.2
 packaging==19.0
-gevent==1.4.0
+gevent==23.9.0
 pytz==2019.1
 rasa-sdk~=1.6.0
 colorclass==2.2.0
